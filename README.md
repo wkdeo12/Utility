@@ -4,7 +4,8 @@
 TextWriter사용법
 씬에 하나 추가한 후
 
-EX)
+EX-
+
     TextWriter.TextWriterSingle textWriterSingle;
     public float msgOutPutSpeed = 1f;
     public TextMeshProUGUI messageText;
