@@ -1,0 +1,91 @@
+using UnityEngine;
+using UnityEngine.Events;
+using System;
+
+/// <summary>
+/// 재사용 가능한 범용 다중 상태 컴포넌트.
+/// 특정 세이브 매니저에 종속되지 않으며, 외부에서 델리게이트(Func, Action)를 통해 세이브/로드를 연결해야 합니다.
+/// </summary>
+public class SavableObject : MonoBehaviour
+{
+    // ===== [핵심: 재사용성을 위한 정적 델리게이트 브릿지] =====
+    // 다른 프로젝트에서 이 컴포넌트를 쓸 때는, 그 프로젝트의 세이브 매니저가 이 두 변수에 함수를 연결해 주면 됩니다.
+    
+    // (입력: uniqueID / 출력: 저장된 상태값 int. 만약 저장된 데이터가 없으면 null 반환)
+    public static Func<string, int?> OnRequestLoadState;
+    
+    // (입력: uniqueID, 저장할 상태값 int)
+    public static Action<string, int> OnRequestSaveState;
+    // ==========================================================
+
+    [Header("Save Settings")]
+    public string uniqueMapID;
+
+    [Tooltip("시작할 때의 기본 상태 번호 (보통 0)")]
+    public int startingState = 0;
+
+    [System.Serializable]
+    public class StateAction
+    {
+        public string stateName; 
+        
+        [Tooltip("1. [State Setup] 씬 로드 및 상태 변경 시 내 모습을 세팅")]
+        public UnityEvent onStateSetup;
+        
+        [Tooltip("2. [Transition] 이 상태로 '전환'되는 순간 타겟에게 쏠 신호")]
+        public UnityEvent onTransition;
+        
+        [Tooltip("3. [Feedback] 이 상태로 진입할 때 터질 연출 (VFX, SFX)")]
+        public UnityEvent onFeedback;
+    }
+
+    [Header("States")]
+    public StateAction[] states;
+
+    private int _currentState;
+
+    private void Start()
+    {
+        _currentState = startingState;
+
+        // 🌟 1. 세이브 데이터 요청 (외부 매니저가 연결되어 있다면 값을 받아옴)
+        if (OnRequestLoadState != null && !string.IsNullOrEmpty(uniqueMapID))
+        {
+            int? savedState = OnRequestLoadState.Invoke(uniqueMapID);
+            if (savedState.HasValue)
+            {
+                _currentState = savedState.Value;
+            }
+        }
+
+        // 🌟 2. 게임 로드 시: 조용히 '내 모습(Setup)'만 현재 상태에 맞게 세팅
+        if (states.Length > _currentState)
+        {
+            states[_currentState].onStateSetup?.Invoke();
+        }
+    }
+
+    public void ChangeState(int newState)
+    {
+        if (newState < 0 || newState >= states.Length || _currentState == newState) return;
+
+        _currentState = newState;
+
+        // 상태 전환 실행
+        states[_currentState].onStateSetup?.Invoke();
+        states[_currentState].onTransition?.Invoke();
+        states[_currentState].onFeedback?.Invoke();
+
+        // 🌟 3. 외부 매니저에게 변경된 상태 저장을 위임 (알아서 저장하라고 던짐)
+        if (OnRequestSaveState != null && !string.IsNullOrEmpty(uniqueMapID))
+        {
+            OnRequestSaveState.Invoke(uniqueMapID, _currentState);
+        }
+    }
+
+    public void NextState()
+    {
+        int next = (_currentState + 1) % states.Length;
+        ChangeState(next);
+    }
+}
